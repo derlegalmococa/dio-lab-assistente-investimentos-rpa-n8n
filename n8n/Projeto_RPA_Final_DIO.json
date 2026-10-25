@@ -1,0 +1,174 @@
+{
+  "name": "Projeto_RPA_Final_DIO",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clientes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6063fab2-d0e8-4d82-adc2-40fe47a2898b",
+      "name": "Webhook",
+      "webhookId": "82485a74-9820-4902-afad-cba3b334a27c"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"ok\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        880,
+        -160
+      ],
+      "id": "83be6a67-ee9a-492a-b011-09f62f606f04",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "url": "https://digitalinnovationone.github.io/dio-lab-assistente-investimentos-rpa-n8n/data.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        0
+      ],
+      "id": "7651e0de-7ac3-426b-99d4-60b13592c34c",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Pega o CSV como texto vindo do HTTP Request\nconst csvRaw = $json.data ?? $json.body ?? $json;\n\nconst text = (typeof csvRaw === 'string')\n  ? csvRaw\n  : JSON.stringify(csvRaw);\n\nconst lines = text\n  .split(/\\r?\\n/)\n  .map(l => l.trim())\n  .filter(Boolean);\n\nconst headers = lines[0].split(';').map(h => h.trim());\n\nconst investimentos = lines.slice(1).map(line => {\n  const cols = line.split(';').map(c => c.trim());\n  const obj = {};\n\n  headers.forEach((h, i) => {\n    obj[h] = cols[i] ?? '';\n  });\n\n  // normaliza tipo numérico\n  obj['mínimo'] = Number(\n    String(obj['mínimo']).replace(/[^\\d,.-]/g, '').replace(',', '.')\n  );\n\n  return obj;\n});\n\nreturn [{ json: { investimentos } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        0
+      ],
+      "id": "a58bb648-b2b5-477e-8f73-5eec9f0315ac",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        512,
+        -224
+      ],
+      "id": "e86c8a47-a91e-4d46-bee1-6f4786db29ec",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code2 – integra os dados do cliente (Webhook) com os investimentos (CSV)\nconst item = $input.first().json;\n\n// Dados do cliente enviados no POST\nconst cliente = item.body ?? {};\n\n// Lista de investimentos vinda do nó \"Code in JavaScript\"\nconst investimentos = Array.isArray(item.investimentos) ? item.investimentos : [];\n\n// Valor disponível do cliente (tenta nomes comuns de campo)\nconst valorKeys = ['valor', 'valorDisponivel', 'valor_disponivel', 'aporte', 'patrimonio'];\nlet valorCliente = null;\nfor (const k of valorKeys) {\n  if (cliente[k] !== undefined && cliente[k] !== '') {\n    valorCliente = Number(String(cliente[k]).replace(/[^\\d,.-]/g, '').replace(',', '.'));\n    break;\n  }\n}\n\n// Perfil do cliente (opcional)\nconst perfil = String(cliente.perfil ?? cliente.perfilInvestidor ?? '')\n  .trim()\n  .toLowerCase();\n\n// Filtra investimentos compatíveis\nconst recomendados = investimentos.filter(inv => {\n  const minimo = Number(inv['mínimo']);\n  const okValor = valorCliente === null || isNaN(minimo) || minimo <= valorCliente;\n\n  const risco = String(inv['risco'] ?? '').toLowerCase();\n  const okPerfil = !perfil || !risco || risco.includes(perfil) || perfil.includes(risco);\n\n  return okValor && okPerfil;\n});\n\n// Resultado integrado\nreturn [{\n  json: {\n    cliente,\n    valorCliente,\n    perfil: perfil || null,\n    totalInvestimentos: investimentos.length,\n    totalRecomendados: recomendados.length,\n    recomendados,\n    investimentos,\n    processadoEm: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -224
+      ],
+      "id": "39d79fc1-3378-4859-bb5f-021fa6a62495",
+      "name": "Code2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7cde0594-0053-465c-badd-4a3a4a49c3c3",
+  "meta": {
+    "instanceId": "fc592642b18da1e49986eea76cc9a65c18658f6b214e46e80edd6627b50c7284"
+  },
+  "nodeGroups": [],
+  "id": "VjVbjeoDxLoKzkcf",
+  "tags": []
+}
